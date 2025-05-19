@@ -1,0 +1,119 @@
+version: 2
+
+models:
+  - name: dim_organization
+    description: >
+      Dimension table with one row per organization, enriched with invoice and payment metrics,
+      contract activity, and calculated fields such as organization age and balance status.
+    columns:
+      - name: organization_id
+        description: Unique identifier for the organization.
+        tests: [unique, not_null]
+
+      - name: first_payment_date
+        description: Date of the organization's first payment (if any).
+
+      - name: last_payment_date
+        description: Date of the most recent payment.
+
+      - name: legal_entity_country_code
+        description: Hashed code representing the legal country of the organization.
+        tests: [not_null]
+
+      - name: count_total_contracts_active
+        description: Total number of active contracts associated with the organization.
+        tests:
+          - not_null
+          - dbt_expectations.expect_column_values_to_be_between:
+              min_value: 0
+
+      - name: organization_created_at
+        description: Timestamp when the organization was created in the platform.
+        tests: [not_null]
+
+      - name: organization_age_days
+        description: Number of days since the organization was created.
+
+      - name: total_invoices
+        description: Total number of invoices related to the organization.
+
+      - name: total_invoice_usd
+        description: Total amount invoiced to the organization in USD (using FX_RATE).
+        tests:
+          - dbt_expectations.expect_column_values_to_be_between:
+              min_value: 0
+
+      - name: total_payment_usd
+        description: Total amount paid by the organization in USD (using FX_RATE_PAYMENT).
+        tests:
+          - dbt_expectations.expect_column_values_to_be_between:
+              min_value: 0
+
+      - name: first_invoice_date
+        description: Date of the earliest invoice created for the organization.
+
+      - name: last_invoice_date
+        description: Date of the latest invoice created for the organization.
+
+      - name: has_balance_due
+        description: Boolean flag indicating whether the organization has unpaid balance.
+
+      - name: invoice_payment_ratio
+        description: Ratio of total paid to total invoiced. May be null if no invoices exist.
+
+  - name: fct_organization_balance
+    description: >
+      Fact table tracking cumulative financial balance per organization per day, defined as
+      total invoiced amount minus total paid amount (in USD). Includes a flag for 50%+ changes.
+    tests:
+      - name: assert_new_balance_alert
+        description: >
+          Detects organizations with more than 50% day-over-day balance change.
+          Includes organization_id and invoice_date in the alert rows.
+        meta:
+          notify: true
+          severity: high
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns:
+            - organization_id
+            - invoice_date
+    columns:
+      - name: organization_id
+        description: Unique identifier for the organization.
+        tests: [not_null]
+
+      - name: invoice_date
+        description: Date of invoice activity (used for tracking balance).
+
+      - name: balance_usd
+        description: Outstanding balance in USD for the organization on that day.
+
+      - name: prev_balance_usd
+        description: Balance from the previous day (used for change comparison).
+
+      - name: balance_change_pct
+        description: Percentage change in financial balance from the previous day.
+
+      - name: balance_change_gt_50pct
+        description: Boolean flag that is true if balance changed by more than 50% from previous day.
+        tests:
+          - dbt_expectations.expect_column_values_to_be_in_set:
+              value_set: [true, false]
+
+      - name: cumulative_invoice_usd
+        description: Cumulative total invoiced amount in USD up to that date.
+
+      - name: cumulative_payment_usd
+        description: Cumulative total paid amount in USD up to that date.
+
+      - name: daily_invoice_usd
+        description: Total invoiced amount in USD on that specific day.
+
+      - name: daily_payment_usd
+        description: Total paid amount in USD on that specific day.
+
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns:
+            - organization_id
+            - invoice_date

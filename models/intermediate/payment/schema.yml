@@ -1,0 +1,12 @@
+
+version: 2
+
+models:
+  - name: inmd_invoices
+    description: "Invoices where a currency conversion was applied"
+    columns:
+      - name: invoice_id
+        description: "The primary key for this table"
+        data_tests:
+          - unique
+          - not_null
